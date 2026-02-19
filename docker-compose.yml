@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  missav-stream:
+    build: .
+    container_name: missav-stream
+    ports:
+      - "5000:5000"
+    environment:
+      - BASE_URL=https://missav.ai
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

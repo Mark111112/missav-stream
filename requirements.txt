@@ -1,0 +1,17 @@
+# MissAV Stream Service Requirements
+
+# Flask Web Framework
+Flask==3.0.0
+
+# HTTP 库
+requests>=2.31.0
+
+# curl_cffi - 推荐安装，更好地绕过 Cloudflare 保护
+# 如果安装失败，服务会自动回退到标准 requests 库
+curl_cffi>=0.6.0
+
+# WSGI 服务器（生产环境）
+gunicorn>=21.0.0
+
+# 生产环境日志
+structlog>=23.2.0
