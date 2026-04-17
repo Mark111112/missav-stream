@@ -6,6 +6,25 @@ MissAV 视频流服务
 import os
 import logging
 from flask import Flask, request, jsonify
+from urllib.parse import urlparse
+
+
+def build_playback_payload(movie_id: str, stream_url: str):
+    watch_url = f"{BASE_URL.rstrip('/')}/{movie_id}"
+    parsed = urlparse(watch_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else BASE_URL.rstrip('/')
+    return {
+        'mode': 'headers',
+        'stream_url': stream_url,
+        'direct_url': stream_url,
+        'proxy_url': None,
+        'headers': {
+            'Referer': watch_url,
+            'Origin': origin,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        }
+    }
+
 from resolver import VideoResolver
 
 # 配置日志
@@ -74,10 +93,12 @@ def resolve_movie(movie_id: str):
 
         if stream_url:
             logger.info(f"解析成功: {movie_id}")
+            playback = build_playback_payload(movie_id, stream_url)
             return jsonify({
                 'success': True,
                 'movie_id': movie_id,
                 'stream_url': stream_url,
+                'playback': playback,
             }), 200
         else:
             logger.warning(f"解析失败: {movie_id}")
@@ -85,6 +106,7 @@ def resolve_movie(movie_id: str):
                 'success': False,
                 'movie_id': movie_id,
                 'stream_url': None,
+                'playback': None,
                 'error': 'No stream URL found'
             }), 404
 
@@ -94,6 +116,7 @@ def resolve_movie(movie_id: str):
             'success': False,
             'movie_id': movie_id,
             'stream_url': None,
+            'playback': None,
             'error': str(e)
         }), 500
 
@@ -131,16 +154,19 @@ def resolve_movie_post():
         stream_url = resolver.resolve(movie_id, quality=quality)
 
         if stream_url:
+            playback = build_playback_payload(movie_id, stream_url)
             return jsonify({
                 'success': True,
                 'movie_id': movie_id,
                 'stream_url': stream_url,
+                'playback': playback,
             }), 200
         else:
             return jsonify({
                 'success': False,
                 'movie_id': movie_id,
                 'stream_url': None,
+                'playback': None,
                 'error': 'No stream URL found'
             }), 404
 
@@ -148,6 +174,7 @@ def resolve_movie_post():
         logger.error(f"POST 解析异常: {e}")
         return jsonify({
             'success': False,
+            'playback': None,
             'error': str(e)
         }), 500
 

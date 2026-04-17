@@ -1,23 +1,28 @@
 # MissAV Stream Service
 
-独立的 MissAV 视频流解析服务，用于获取 MissAV.ai 网站视频的 m3u8 流 URL。
+独立的 MissAV 视频流解析服务，用于获取 MissAV.ai 网站视频的可播放信息。
+
+> 当前定位：**轻量解析服务**，适合部署在 Koyeb 等低配环境。  
+> 它负责解析 `stream_url` 并返回播放所需请求头，**不负责代理整段视频流量**。
 
 ## 功能
 
 - 从 MissAV.ai 获取影片视频流 URL
 - 支持多质量选择（720p, 1080p 等）
-- 自动绕过 Cloudflare 保护（使用 curl_cffi）
-- RESTful API 接口
+- 自动绕过 Cloudflare 保护（优先使用 `curl_cffi`）
+- 返回统一播放结构 `playback`
+- 轻量模式：返回 `direct_url + headers`，不做重流量代理
 
 ## API 接口
 
 ### 1. 健康检查
 
-```
+```http
 GET /health
 ```
 
 **响应示例：**
+
 ```json
 {
   "status": "healthy",
@@ -28,7 +33,7 @@ GET /health
 
 ### 2. 解析影片 URL (GET)
 
-```
+```http
 GET /api/resolve/<movie_id>?quality=1080p
 ```
 
@@ -36,28 +41,42 @@ GET /api/resolve/<movie_id>?quality=1080p
 - `movie_id`（路径参数）：影片 ID，如 `SSIS-406`
 - `quality`（查询参数，可选）：视频质量，如 `720p`, `1080p`，默认最高质量
 
-**响应示例（成功）：**
+**成功响应示例：**
+
 ```json
 {
   "success": true,
   "movie_id": "SSIS-406",
-  "stream_url": "https://surrit.com/xxx/1080p/video.m3u8"
+  "stream_url": "https://surrit.com/xxx/1080p/video.m3u8",
+  "playback": {
+    "mode": "headers",
+    "stream_url": "https://surrit.com/xxx/1080p/video.m3u8",
+    "direct_url": "https://surrit.com/xxx/1080p/video.m3u8",
+    "proxy_url": null,
+    "headers": {
+      "Referer": "https://missav.ai/SSIS-406",
+      "Origin": "https://missav.ai",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    }
+  }
 }
 ```
 
-**响应示例（失败）：**
+**失败响应示例：**
+
 ```json
 {
   "success": false,
   "movie_id": "SSIS-406",
   "stream_url": null,
+  "playback": null,
   "error": "No stream URL found"
 }
 ```
 
 ### 3. 解析影片 URL (POST)
 
-```
+```http
 POST /api/resolve
 Content-Type: application/json
 
@@ -67,7 +86,65 @@ Content-Type: application/json
 }
 ```
 
-**响应同 GET 接口。**
+**成功响应结构与 GET 相同。**
+
+## 统一播放协议说明
+
+本服务返回统一 `playback` 结构，便于客户端与其他服务（例如 busweb）对齐：
+
+- `mode: "headers"`
+  - 说明：客户端应使用 `direct_url`，并附带 `headers` 播放
+  - 适合：Koyeb / Serverless / 低配容器
+- `mode: "proxy"`
+  - 说明：通常由本地高带宽服务返回 `proxy_url` / `proxy_path`
+  - 本服务**默认不使用该模式**
+
+### 为什么默认不做 proxy？
+
+如果服务端代理整个 HLS 播放过程（m3u8 + 所有分片），会显著增加：
+
+- 出站流量
+- 长连接数量
+- 并发分片请求数
+
+对于 Koyeb 这类低配实例，这会导致：
+
+- 带宽/流量快速上涨
+- 连接压力明显增大
+- 成本和稳定性恶化
+
+因此本服务默认只做：
+
+> **解析 + 返回 headers**
+
+而不是：
+
+> **全量视频代理**
+
+## Flutter 客户端接入建议
+
+如果客户端支持给网络播放器附加请求头，建议优先使用：
+
+- `playback.direct_url`
+- `playback.headers`
+
+伪代码示例：
+
+```dart
+final playback = response.data['playback'];
+final url = playback['direct_url'];
+final headers = Map<String, String>.from(playback['headers'] ?? {});
+
+VideoPlayerController.networkUrl(
+  Uri.parse(url),
+  httpHeaders: headers,
+);
+```
+
+如果客户端后续同时兼容 busweb 这样的重代理服务，可以统一处理：
+
+1. `mode == proxy` → 优先使用 `proxy_url` / `proxy_path`
+2. `mode == headers` → 使用 `direct_url + headers`
 
 ## 本地运行
 
@@ -116,8 +193,6 @@ docker run -d \
 
 ### 3. Docker Compose（推荐）
 
-创建 `docker-compose.yml`：
-
 ```yaml
 version: '3.8'
 
@@ -136,22 +211,25 @@ services:
 运行：
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-## Flutter 客户端配置
+## Koyeb 部署建议
 
-在 Flutter 应用中设置服务地址：
+适合部署到 Koyeb，但建议保持当前轻量模式：
 
-```dart
-MissAVService(
-  pythonServerUrl: 'http://your-server:5000',
-);
-```
+- ✅ 推荐：解析 `stream_url` + 返回 `headers`
+- ❌ 不推荐：服务端代理完整视频流
+
+如果后续需要代理模式，建议放在：
+
+- 家庭自建服务器
+- NAS / 局域网 Docker 主机
+- 有稳定带宽和较高流量上限的环境
 
 ## 注意事项
 
-1. **curl_cffi**：强烈建议安装此库以更好地绕过 Cloudflare 保护
+1. **curl_cffi**：强烈建议安装，以更好地绕过 Cloudflare 保护
    ```bash
    pip install curl_cffi
    ```
@@ -160,9 +238,11 @@ MissAVService(
 
 3. **防火墙**：确保服务器可以访问 `missav.ai` 和 `surrit.com`
 
-4. **速率限制**：服务没有内置速率限制，建议使用反向代理（如 Nginx）添加
+4. **速率限制**：服务未内置速率限制，建议在反向代理层加限制
 
-5. **HTTPS**：生产环境建议使用 HTTPS，可使用 Nginx 反向代理
+5. **HTTPS**：生产环境建议使用 HTTPS
+
+6. **环境定位**：本服务设计目标是“轻量解析”，不是通用视频 CDN / 反向代理
 
 ## Nginx 配置示例
 
