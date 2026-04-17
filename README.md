@@ -121,6 +121,17 @@ Content-Type: application/json
 
 > **全量视频代理**
 
+## 维护文档
+
+- [Resolver Maintenance Guide](./docs/RESOLVER_MAINTENANCE.md)
+
+这份文档专门说明：
+
+- 当前解析器到底在做什么
+- 源站变化时如何分类定位
+- 该优先修改哪一层
+- 哪些情况属于轻量解析方案的边界
+
 ## Flutter 客户端接入建议
 
 如果客户端支持给网络播放器附加请求头，建议优先使用：
