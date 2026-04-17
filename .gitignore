@@ -34,3 +34,10 @@ Thumbs.db
 远程部署.txt
 CMD lines.txt
 streamservice.txt
+# Local SSH keys (never commit)
+missav
+missav.pub
+missav1
+missav1.pub
+*.pem
+*.key
