@@ -307,24 +307,34 @@ class VideoResolver:
 
     def _fetch_playlist(self, url: str) -> Optional[str]:
         """获取播放列表内容"""
+        referer = self.base_url + '/'
+        playlist_headers = {
+            **DEFAULT_HEADERS,
+            'Referer': referer,
+            'Origin': self.base_url,
+        }
+
         # 优先使用 curl_cffi
         if CURL_CFFI_AVAILABLE:
             try:
                 response = curl_requests.get(
                     url,
+                    headers=playlist_headers,
                     impersonate="chrome110",
                     timeout=self.timeout,
                 )
                 if response.status_code == 200:
                     return response.text
+                logger.warning(f"获取播放列表失败 (curl_cffi): HTTP {response.status_code}")
             except Exception as e:
                 logger.debug(f"获取播放列表失败 (curl_cffi): {e}")
 
         # 回退到标准 requests
         try:
-            response = self.session.get(url, timeout=self.timeout)
+            response = self.session.get(url, headers=playlist_headers, timeout=self.timeout)
             if response.status_code == 200:
                 return response.text
+            logger.warning(f"获取播放列表失败 (requests): HTTP {response.status_code}")
         except Exception as e:
             logger.error(f"获取播放列表失败 (requests): {e}")
 
